@@ -22,6 +22,11 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: false
       },
+      is_calling: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       created_at: {
         allowNull: false,
         type: Sequelize.DATE

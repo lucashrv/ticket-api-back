@@ -1,5 +1,5 @@
 const { tickets } = require('../models')
-
+const { Op } = require('Sequelize')
 module.exports = class ticketController {
     async store(req, res) {
         try {
@@ -18,6 +18,18 @@ module.exports = class ticketController {
 
             const response = await tickets.create(data)
 
+            if (await tickets.count() <= 1) {
+                await tickets.update({
+                    is_calling: true
+                }, {
+                    where: {
+                        id: response.id
+                    }
+                })
+
+                response.is_calling = true;
+            }
+
             res.json(response);
         } catch (error) {
             console.log(error)
@@ -29,7 +41,10 @@ module.exports = class ticketController {
     async index(req, res) {
         try {
             const response = await tickets.findOne({
-                order: [['type', 'DESC'], ['created_at', 'ASC']]
+                where: {
+                    is_calling: true
+                },
+                order: [['is_calling', 'DESC'], ['type', 'DESC'], ['created_at', 'ASC']]
             })
 
             res.json(response);
@@ -43,7 +58,25 @@ module.exports = class ticketController {
     async listAll(req, res) {
         try {
             const response = await tickets.findAll({
-                order: [['type', 'DESC'], ['created_at', 'ASC']]
+                order: [['type', 'DESC'], ['created_at', 'ASC']],
+                raw: true
+            })
+
+            const orderCall = [response[1].type];
+
+            if (response[0].type === 2) {
+                orderCall.push(2);
+            }
+
+            const whereOptions = {
+                type: {
+                    [Op.notIn]: orderCall
+                }
+            }
+            const nextPatient = await tickets.findOne({
+                order: [['type', 'DESC'], ['created_at', 'ASC']],
+                where: whereOptions,
+                raw: true
             })
 
             res.json(response);
@@ -56,32 +89,69 @@ module.exports = class ticketController {
 
     async call(req, res) {
         try {
-            const patient = await tickets.findOne({
-                order: [['type', 'DESC'], ['created_at', 'ASC']],
-                attributes: ['id']
+            const patients = await tickets.findAll({
+                order: [['is_calling', 'DESC'], ['type', 'DESC'], ['created_at', 'ASC']],
+                raw: true
             })
 
-            if (!patient) {
+            if (!patients.length) {
                 res.json('Não tem mais pacientes na fila');
                 return
             }
 
-            await tickets.destroy({
-                where: {
-                    id: patient.id
+            const orderCall = patients[0].type === 3 && patients[1].type === 3 ? [patients[1].type] : [];
+
+            if (patients[0].type === 2 && patients[1].type === 2) {
+                orderCall.push(2);
+            }
+
+            const whereOptions = {
+                type: {
+                    [Op.notIn]: orderCall
+                },
+                id: {
+                    [Op.ne]: patients[0].id
                 }
+            }
+
+            if (patients.length >= 2) {
+                whereOptions.is_calling = false;
+            }
+
+            const nextPatient = await tickets.findOne({
+                order: [['type', 'DESC'], ['created_at', 'ASC']],
+                where: whereOptions,
+                raw: true
             })
 
-            const response = await tickets.findOne({
-                order: [['type', 'DESC'], ['created_at', 'ASC']]
-            })
+            if (!nextPatient) {
+                tickets.destroy({
+                    where: {
+                        id: patients[0].id
+                    }
+                })
+                res.json('Não tem mais pacientes na fila');
+                return
+            } else {
+                const promiseList = [
+                    tickets.update({
+                        is_calling: true
+                        }, {
+                        where: {
+                            id: nextPatient.id
+                        }
+                    }),
+                    tickets.destroy({
+                        where: {
+                            id: patients[0].id
+                        }
+                    })
+                ]
 
-            const nextPatient = response ? response : 'Não tem mais pacientes na fila'
-
-            res.json(nextPatient);
+                await Promise.all(promiseList)
+                res.json(nextPatient);
+            }
         } catch (error) {
-            console.log(error)
-
             res.status(500).send(error)
         }
     }

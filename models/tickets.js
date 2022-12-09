@@ -11,11 +11,16 @@ module.exports = (sequelize, DataTypes) => {
   Ticket.init(
     {
       name: { type: DataTypes.STRING, allowNull: false },
-      type: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 3 },
+      type: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
       ticket_pass: {
         type: DataTypes.INTEGER,
         allowNull: true,
         defaultValue: 1
+      },
+      is_calling: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
       },
     },
     {
